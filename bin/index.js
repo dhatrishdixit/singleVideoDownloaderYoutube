@@ -1,3 +1,6 @@
+#!/usr/bin/env node
+process.removeAllListeners('warning');
+
 const fs = require('fs');
 const path = require('path');
 const ytdl = require('ytdl-core');
@@ -26,19 +29,31 @@ rl.question('Enter the video URL: ', async (videoUrl) => {
         fs.mkdirSync(folderLocation, { recursive: true });
       }
 
-      // Check if the file already exists
-      if (fs.existsSync(filePath)) {
-        rl.question(`File '${filePath}' already exists. Do you want to overwrite? (y/n): `, (answer) => {
-          if (answer.toLowerCase() === 'y') {
-            downloadAndMergeVideo(videoUrl, filePath, videoInfo);
-          } else {
-            process.stdout.write('Skipping video download.\n');
-            rl.close();
-          }
-        });
-      } else {
-        downloadAndMergeVideo(videoUrl, filePath, videoInfo);
-      }
+      // List available video qualities
+      const qualities = ['360p', '480p', '720p', '1080p', '4K'];
+      console.log('Available target video qualities:');
+      qualities.forEach((quality, index) => {
+        console.log(`${index}: ${quality}`);
+      });
+
+      // Prompt user for desired video quality
+      rl.question('Select the desired target video quality (index): ', (qualityIndex) => {
+        const targetQuality = qualities[parseInt(qualityIndex, 10)];
+        
+        // Check if the file already exists
+        if (fs.existsSync(filePath)) {
+          rl.question(`File '${filePath}' already exists. Do you want to overwrite? (y/n): `, (answer) => {
+            if (answer.toLowerCase() === 'y') {
+              downloadAndProcessVideo(videoUrl, filePath, targetQuality);
+            } else {
+              process.stdout.write('Skipping video download.\n');
+              rl.close();
+            }
+          });
+        } else {
+          downloadAndProcessVideo(videoUrl, filePath, targetQuality);
+        }
+      });
     } catch (error) {
       console.error('An error occurred:', error);
       rl.close();
@@ -46,76 +61,121 @@ rl.question('Enter the video URL: ', async (videoUrl) => {
   });
 });
 
-// Function to download and merge video
-function downloadAndMergeVideo(videoUrl, filePath, videoInfo) {
-  process.stdout.write(`Downloading video: ${videoInfo.videoDetails.title}\n`);
+// Function to download and process video
+function downloadAndProcessVideo(videoUrl, filePath, targetQuality) {
+  process.stdout.write(`Downloading video and audio...\n`);
 
   // Create progress bars
-  const audioBar = new ProgressBar('Audio Download [:bar] :percent :etas', {
+  const downloadBar = new ProgressBar('Download [:bar] :percent :etas', {
     complete: '=',
     incomplete: ' ',
     width: 50,
     total: 100
   });
 
-  const videoBar = new ProgressBar('Video Download [:bar] :percent :etas', {
+  const processingBar = new ProgressBar('Processing [:bar] :percent :etas', {
     complete: '=',
     incomplete: ' ',
     width: 50,
     total: 100
-  });
-
-  const mergingBar = new ProgressBar('Merging Progress [:bar] :percent :etas', {
-    complete: '=',
-    incomplete: ' ',
-    width: 50,
-    total: 100
-  });
-
-  // Download audio stream
-  const audio = ytdl(videoUrl, { quality: 'highestaudio' }).on('progress', (_, downloaded, total) => {
-    audioBar.update(downloaded / total);
   });
 
   // Download video stream
-  const video = ytdl(videoUrl, { quality: 'highestvideo' }).on('progress', (_, downloaded, total) => {
-    videoBar.update(downloaded / total);
+  const videoStream = ytdl(videoUrl, { quality: 'highestvideo' });
+  const audioStream = ytdl(videoUrl, { quality: 'highestaudio' });
+
+  const videoPath = path.join(path.dirname(filePath), `${path.basename(filePath, '.mp4')}_video.mp4`);
+  const audioPath = path.join(path.dirname(filePath), `${path.basename(filePath, '.mp4')}_audio.mp4`);
+
+  const videoFile = fs.createWriteStream(videoPath);
+  const audioFile = fs.createWriteStream(audioPath);
+
+  videoStream.pipe(videoFile);
+  audioStream.pipe(audioFile);
+
+  videoStream.on('progress', (_, downloaded, total) => {
+    downloadBar.update(downloaded / total);
   });
 
-  // Spawn ffmpeg process to merge audio and video
+  audioStream.on('progress', (_, downloaded, total) => {
+    downloadBar.update(downloaded / total);
+  });
+
+  let videoFinished = false;
+  let audioFinished = false;
+
+  videoFile.on('finish', () => {
+    videoFile.close();
+    videoFinished = true;
+    if (audioFinished) {
+      mergeAndProcess(videoPath, audioPath, filePath, targetQuality, processingBar);
+    }
+  });
+
+  audioFile.on('finish', () => {
+    audioFile.close();
+    audioFinished = true;
+    if (videoFinished) {
+      mergeAndProcess(videoPath, audioPath, filePath, targetQuality, processingBar);
+    }
+  });
+
+  videoFile.on('error', (error) => {
+    console.error('Error during video download:', error);
+    rl.close();
+  });
+
+  audioFile.on('error', (error) => {
+    console.error('Error during audio download:', error);
+    rl.close();
+  });
+}
+
+// Function to merge video and audio and upscale if necessary
+function mergeAndProcess(videoPath, audioPath, outputPath, targetQuality, processingBar) {
+  const resolutions = {
+    '360p': '640x360',
+    '480p': '854x480',
+    '720p': '1280x720',
+    '1080p': '1920x1080',
+    '4K': '3840x2160'
+  };
+  
+  const targetResolution = resolutions[targetQuality];
+
   const ffmpegProcess = cp.spawn(ffmpeg, [
-    '-loglevel', '8', '-hide_banner',
-    '-progress', 'pipe:3',
-    '-i', 'pipe:4', '-i', 'pipe:5',
-    '-map', '0:a', '-map', '1:v',
-    '-c:v', 'copy', '-y', filePath
+    '-i', videoPath,
+    '-i', audioPath,
+    '-vf', `scale=${targetResolution}`,
+    '-c:v', 'libx264',
+    '-preset', 'slow',
+    '-crf', '18',
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    '-strict', 'experimental',
+    '-y', outputPath
   ], {
     windowsHide: true,
-    stdio: ['inherit', 'inherit', 'inherit', 'pipe', 'pipe', 'pipe']
+    stdio: ['inherit', 'inherit', 'inherit', 'pipe']
   });
 
-  // Update merging progress bar based on ffmpeg output
   ffmpegProcess.stdio[3].on('data', (chunk) => {
     const progress = chunk.toString().trim().split('=')[1];
     if (progress) {
       const progressValue = parseFloat(progress);
-      mergingBar.update(progressValue / 100);
+      processingBar.update(progressValue / 100);
     }
   });
 
-  // Handle ffmpeg process completion
   ffmpegProcess.on('close', () => {
-    process.stdout.write('\nMerging finished!\n');
+    fs.unlinkSync(videoPath); // Remove the temporary video file
+    fs.unlinkSync(audioPath); // Remove the temporary audio file
+    console.log('Processing finished!');
     rl.close();
   });
 
-  // Handle ffmpeg process errors
   ffmpegProcess.on('error', (error) => {
-    console.error('Error during the merging process:', error);
+    console.error('Error during the processing:', error);
     rl.close();
   });
-
-  // Pipe audio and video streams to ffmpeg process
-  audio.pipe(ffmpegProcess.stdio[4]);
-  video.pipe(ffmpegProcess.stdio[5]);
 }
