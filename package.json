@@ -1,9 +1,12 @@
 {
-  "name": "singlevideodownload",
+  "name": "ytvdownload",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "./bin/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "ytvdownload": "./bin/index.js"
   },
   "author": "",
   "license": "ISC",
@@ -17,5 +20,13 @@
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {},
-  "description": ""
+  "description": "single video downloader by passing link of youtube video and location to save the file ",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhatrishdixit/singleVideoDownloaderYoutube.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dhatrishdixit/singleVideoDownloaderYoutube/issues"
+  },
+  "homepage": "https://github.com/dhatrishdixit/singleVideoDownloaderYoutube#readme"
 }
