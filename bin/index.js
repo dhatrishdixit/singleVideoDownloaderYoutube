@@ -18,40 +18,65 @@ const rl = readline.createInterface({
 // Prompt user for video URL
 rl.question('Enter the video URL: ', async (videoUrl) => {
   // Prompt user for folder location
-  rl.question('Enter the folder location to save video: ', async (folderLocation) => {
+  rl.question('Enter the folder location to save video or audio: ', async (folderLocation) => {
     try {
       const videoInfo = await ytdl.getInfo(videoUrl);
       const videoTitle = videoInfo.videoDetails.title.replace(/[\\/?><%*:|"]/g, '-');
-      const filePath = path.join(folderLocation, `${videoTitle}.mp4`);
 
       // Create the folder if it doesn't exist
       if (!fs.existsSync(folderLocation)) {
         fs.mkdirSync(folderLocation, { recursive: true });
       }
 
-      // List available video qualities
-      const qualities = ['360p', '480p', '720p', '1080p', '4K'];
-      console.log('Available target video qualities:');
-      qualities.forEach((quality, index) => {
-        console.log(`${index}: ${quality}`);
-      });
+      // Prompt user for download option
+      rl.question('Do you want to download video (mp4 - with quality options) or audio (m4a - highest quality)? (v/a): ', (downloadOption) => {
+        if (downloadOption.toLowerCase() === 'v') {
+          const filePath = path.join(folderLocation, `${videoTitle}.mp4`);
 
-      // Prompt user for desired video quality
-      rl.question('Select the desired target video quality (index): ', (qualityIndex) => {
-        const targetQuality = qualities[parseInt(qualityIndex, 10)];
-        
-        // Check if the file already exists
-        if (fs.existsSync(filePath)) {
-          rl.question(`File '${filePath}' already exists. Do you want to overwrite? (y/n): `, (answer) => {
-            if (answer.toLowerCase() === 'y') {
-              downloadAndProcessVideo(videoUrl, filePath, targetQuality);
+          // List available video qualities
+          const qualities = ['360p', '480p', '720p', '1080p', '4K'];
+          console.log('Available target video qualities:');
+          qualities.forEach((quality, index) => {
+            console.log(`${index}: ${quality}`);
+          });
+
+          // Prompt user for desired video quality
+          rl.question('Select the desired target video quality (index) (choosing higher video quality like 4k will result in longer processing time): ', (qualityIndex) => {
+            const targetQuality = qualities[parseInt(qualityIndex, 10)];
+            
+            // Check if the file already exists
+            if (fs.existsSync(filePath)) {
+              rl.question(`File '${filePath}' already exists. Do you want to overwrite? (y/n): `, (answer) => {
+                if (answer.toLowerCase() === 'y') {
+                  downloadAndProcessVideo(videoUrl, filePath, targetQuality);
+                } else {
+                  process.stdout.write('Skipping video download.\n');
+                  rl.close();
+                }
+              });
             } else {
-              process.stdout.write('Skipping video download.\n');
-              rl.close();
+              downloadAndProcessVideo(videoUrl, filePath, targetQuality);
             }
           });
+        } else if (downloadOption.toLowerCase() === 'a') {
+          const audioPath = path.join(folderLocation, `${videoTitle}.m4a`);
+
+          // Check if the file already exists
+          if (fs.existsSync(audioPath)) {
+            rl.question(`File '${audioPath}' already exists. Do you want to overwrite? (y/n): `, (answer) => {
+              if (answer.toLowerCase() === 'y') {
+                downloadAudio(videoUrl, audioPath);
+              } else {
+                process.stdout.write('Skipping audio download.\n');
+                rl.close();
+              }
+            });
+          } else {
+            downloadAudio(videoUrl, audioPath);
+          }
         } else {
-          downloadAndProcessVideo(videoUrl, filePath, targetQuality);
+          console.log('Invalid option. Please restart the script and choose either "v" for video or "a" for audio.');
+          rl.close();
         }
       });
     } catch (error) {
@@ -176,6 +201,41 @@ function mergeAndProcess(videoPath, audioPath, outputPath, targetQuality, proces
 
   ffmpegProcess.on('error', (error) => {
     console.error('Error during the processing:', error);
+    rl.close();
+  });
+}
+
+// Function to download audio
+function downloadAudio(videoUrl, audioPath) {
+  process.stdout.write(`Downloading audio...\n`);
+
+  // Create progress bar
+  const downloadBar = new ProgressBar('Download [:bar] :percent :etas', {
+    complete: '=',
+    incomplete: ' ',
+    width: 50,
+    total: 100
+  });
+
+  // Download audio stream
+  const audioStream = ytdl(videoUrl, { quality: 'highestaudio' });
+
+  const audioFile = fs.createWriteStream(audioPath);
+
+  audioStream.pipe(audioFile);
+
+  audioStream.on('progress', (_, downloaded, total) => {
+    downloadBar.update(downloaded / total);
+  });
+
+  audioFile.on('finish', () => {
+    audioFile.close();
+    console.log('Audio download finished!');
+    rl.close();
+  });
+
+  audioFile.on('error', (error) => {
+    console.error('Error during audio download:', error);
     rl.close();
   });
 }
