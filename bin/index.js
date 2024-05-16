@@ -34,12 +34,11 @@ rl.question('Enter the video URL: ', async (videoUrl) => {
           const filePath = path.join(folderLocation, `${videoTitle}.mp4`);
 
           // List available video qualities
-          const qualities = ['360p', '480p', '720p', '1080p', '4K'];
+          const qualities = ['360p', '480p', '720p', '1080p','1440p', '4K'];
           console.log('Available target video qualities:');
           qualities.forEach((quality, index) => {
             console.log(`${index}: ${quality}`);
           });
-
           // Prompt user for desired video quality
           rl.question('Select the desired target video quality (index) (choosing higher video quality like 4k will result in longer processing time): ', (qualityIndex) => {
             const targetQuality = qualities[parseInt(qualityIndex, 10)];
@@ -91,7 +90,14 @@ function downloadAndProcessVideo(videoUrl, filePath, targetQuality) {
   process.stdout.write(`Downloading video and audio...\n`);
 
   // Create progress bars
-  const downloadBar = new ProgressBar('Download [:bar] :percent :etas', {
+  const downloadBarVideo = new ProgressBar('Downloading video [:bar] :percent :etas', {
+    complete: '=',
+    incomplete: ' ',
+    width: 50,
+    total: 100
+  });
+
+  const downloadBarAudio = new ProgressBar('Downloading audio [:bar] :percent :etas', {
     complete: '=',
     incomplete: ' ',
     width: 50,
@@ -119,11 +125,11 @@ function downloadAndProcessVideo(videoUrl, filePath, targetQuality) {
   audioStream.pipe(audioFile);
 
   videoStream.on('progress', (_, downloaded, total) => {
-    downloadBar.update(downloaded / total);
+    downloadBarVideo.update(downloaded / total);
   });
 
   audioStream.on('progress', (_, downloaded, total) => {
-    downloadBar.update(downloaded / total);
+    downloadBarAudio.update(downloaded / total);
   });
 
   let videoFinished = false;
@@ -163,7 +169,8 @@ function mergeAndProcess(videoPath, audioPath, outputPath, targetQuality, proces
     '480p': '854x480',
     '720p': '1280x720',
     '1080p': '1920x1080',
-    '4K': '3840x2160'
+    '1440p' : '2560x1440',
+    '4K': '3840x2160',
   };
   
   const targetResolution = resolutions[targetQuality];
