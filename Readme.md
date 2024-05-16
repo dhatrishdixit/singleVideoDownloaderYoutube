@@ -4,7 +4,7 @@ YouTube Video Downloader is a simple tool that lets you download videos and audi
 
 ## Features
 
-- Download videos in various qualities (360p, 480p, 720p, 1080p, 4K).
+- Download videos in various qualities (360p, 480p, 720p, 1080p,1440p, 4K).
 - Download audio in the highest available quality.
 - Easy to use with a command-line interface.
 
